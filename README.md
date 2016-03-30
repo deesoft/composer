@@ -1,7 +1,7 @@
 Composer Web Application
 ========================
 
-Allow execute composer command (`install`, `update`) from brower. This application include `fxp/composer-asset-plugin`.
+Allow execute composer command (`install`, `update`) from browser. This application include `fxp/composer-asset-plugin`.
 
 Installation / Usage
 --------------------
