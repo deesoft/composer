@@ -7,10 +7,7 @@ function execute($scriptDir, $env, $overwrite)
 
     $_SERVER['argv'] = ['', "--env={$env}", "--overwrite={$overwrite}"];
     chdir($targetDir);
-    ob_start();
-    ob_implicit_flush();
     require $targetDir . '/init';
-    echo nl2br(ob_get_clean());
     exit();
 }
 

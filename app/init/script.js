@@ -1,13 +1,14 @@
 $(function () {
-    function install() {
-        $.post(window.location.href, $('#form').serialize(), function (r) {
+    function install(form) {
+        $.post(window.location.href, $(form).serialize(), function (r) {
             $('#result').html(r);
         }).fail(function () {
-            install();
+            install(form);
         });
     }
-    $('#btn').click(function () {
+    $('#form').submit(function (){
         $('#result').html('Loading...');
-        install();
+        install(this);
+        return false;
     });
 });

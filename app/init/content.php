@@ -1,5 +1,5 @@
 <div>
-    <form id="form">
+    <form id="form" method="post">
         <input type="hidden" name="action" value="install">
         <table class="table table-condensed">
             <tr>
