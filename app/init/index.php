@@ -11,7 +11,7 @@ function execute($scriptDir, $env, $overwrite)
     exit();
 }
 
-if (isset($_POST['action']) && $_POST['action'] == 'install') {
+if (isset($_POST['action']) && $_POST['action'] == '1') {
     $env = empty($_POST['env']) ? 'Production' : $_POST['env'];
     $overwrite = empty($_POST['overwrite']) ? 'n' : $_POST['overwrite'];
     execute($scriptDir, $env, $overwrite);

@@ -5,10 +5,10 @@ function execute($scriptDir)
 {
     $targetDir = rtrim($scriptDir . '/' . ltrim($_POST['dir'], '/'), '/');
     require 'install.php';
-    composerInstall($targetDir);
+    runComposer($targetDir,$_POST['command']);
     exit();
 }
-if (isset($_POST['action']) && $_POST['action'] == 'install') {
+if (isset($_POST['action']) && $_POST['action'] == '1') {
     execute($scriptDir);
     return false;
 }
