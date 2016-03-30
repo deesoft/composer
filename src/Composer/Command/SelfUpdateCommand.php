@@ -16,7 +16,8 @@ use Composer\Composer;
 use Composer\Factory;
 use Composer\Config;
 use Composer\Util\Filesystem;
-use Composer\Util\Keys;
+use Composer\SelfUpdate\Keys;
+use Composer\SelfUpdate\Versions;
 use Composer\IO\IOInterface;
 use Composer\Downloader\FilesystemException;
 use Symfony\Component\Console\Input\InputInterface;
@@ -47,6 +48,9 @@ class SelfUpdateCommand extends BaseCommand
                 new InputArgument('version', InputArgument::OPTIONAL, 'The version to update to'),
                 new InputOption('no-progress', null, InputOption::VALUE_NONE, 'Do not output download progress.'),
                 new InputOption('update-keys', null, InputOption::VALUE_NONE, 'Prompt user for a key update'),
+                new InputOption('stable', null, InputOption::VALUE_NONE, 'Force an update to the stable channel'),
+                new InputOption('preview', null, InputOption::VALUE_NONE, 'Force an update to the preview channel'),
+                new InputOption('snapshot', null, InputOption::VALUE_NONE, 'Force an update to the snapshot channel'),
             ))
             ->setHelp(<<<EOT
 The <info>self-update</info> command checks getcomposer.org for newer
@@ -72,6 +76,15 @@ EOT
         $io = $this->getIO();
         $remoteFilesystem = Factory::createRemoteFilesystem($io, $config);
 
+        $versionsUtil = new Versions($config, $remoteFilesystem);
+
+        // switch channel if requested
+        foreach (array('stable', 'preview', 'snapshot') as $channel) {
+            if ($input->getOption($channel)) {
+                $versionsUtil->setChannel($channel);
+            }
+        }
+
         $cacheDir = $config->get('cache-dir');
         $rollbackDir = $config->get('data-dir');
         $home = $config->get('home');
@@ -93,7 +106,8 @@ EOT
             return $this->rollback($output, $rollbackDir, $localFilename);
         }
 
-        $latestVersion = trim($remoteFilesystem->getContents(self::HOMEPAGE, $baseUrl. '/version', false));
+        $latest = $versionsUtil->getLatest();
+        $latestVersion = $latest['version'];
         $updateVersion = $input->getArgument('version') ?: $latestVersion;
 
         if (preg_match('{^[0-9a-f]{40}$}', $updateVersion) && $updateVersion !== $latestVersion) {
@@ -104,6 +118,11 @@ EOT
 
         if (Composer::VERSION === $updateVersion) {
             $io->writeError('<info>You are already using composer version '.$updateVersion.'.</info>');
+
+            // remove all backups except for the most recent, if any
+            if ($input->getOption('clean-backups')) {
+                $this->cleanBackups($rollbackDir, $this->getLastBackupVersion($rollbackDir));
+            }
 
             return 0;
         }
@@ -192,17 +211,11 @@ TAGSPUBKEY
 
         // remove saved installations of composer
         if ($input->getOption('clean-backups')) {
-            $finder = $this->getOldInstallationFinder($rollbackDir);
-
-            $fs = new Filesystem;
-            foreach ($finder as $file) {
-                $file = (string) $file;
-                $io->writeError('<info>Removing: '.$file.'</info>');
-                $fs->remove($file);
-            }
+            $this->cleanBackups($rollbackDir);
         }
 
         if ($err = $this->setLocalPhar($localFilename, $tempFilename, $backupFile)) {
+            @unlink($tempFilename);
             $io->writeError('<error>The file is corrupted ('.$err->getMessage().').</error>');
             $io->writeError('<error>Please re-run the self-update command to try again.</error>');
 
@@ -268,20 +281,19 @@ TAGSPUBKEY
             throw new \UnexpectedValueException('Composer rollback failed: no installation to roll back to in "'.$rollbackDir.'"');
         }
 
-        $old = $rollbackDir . '/' . $rollbackVersion . self::OLD_INSTALL_EXT;
+        $oldFile = $rollbackDir . '/' . $rollbackVersion . self::OLD_INSTALL_EXT;
 
-        if (!is_file($old)) {
-            throw new FilesystemException('Composer rollback failed: "'.$old.'" could not be found');
+        if (!is_file($oldFile)) {
+            throw new FilesystemException('Composer rollback failed: "'.$oldFile.'" could not be found');
         }
-        if (!is_readable($old)) {
-            throw new FilesystemException('Composer rollback failed: "'.$old.'" could not be read');
+        if (!is_readable($oldFile)) {
+            throw new FilesystemException('Composer rollback failed: "'.$oldFile.'" could not be read');
         }
 
-        $oldFile = $rollbackDir . "/{$rollbackVersion}" . self::OLD_INSTALL_EXT;
         $io = $this->getIO();
         $io->writeError(sprintf("Rolling back to version <info>%s</info>.", $rollbackVersion));
         if ($err = $this->setLocalPhar($localFilename, $oldFile)) {
-            $io->writeError('<error>The backup file was corrupted ('.$err->getMessage().') and has been removed.</error>');
+            $io->writeError('<error>The backup file was corrupted ('.$err->getMessage().').</error>');
 
             return 1;
         }
@@ -312,14 +324,27 @@ TAGSPUBKEY
 
             rename($newFilename, $localFilename);
         } catch (\Exception $e) {
-            if ($backupTarget) {
-                @unlink($newFilename);
-            }
             if (!$e instanceof \UnexpectedValueException && !$e instanceof \PharException) {
                 throw $e;
             }
 
             return $e;
+        }
+    }
+
+    protected function cleanBackups($rollbackDir, $except = null)
+    {
+        $finder = $this->getOldInstallationFinder($rollbackDir);
+        $io = $this->getIO();
+        $fs = new Filesystem;
+
+        foreach ($finder as $file) {
+            if ($except && $file->getBasename(self::OLD_INSTALL_EXT) === $except) {
+                continue;
+            }
+            $file = (string) $file;
+            $io->writeError('<info>Removing: '.$file.'</info>');
+            $fs->remove($file);
         }
     }
 

@@ -31,9 +31,9 @@ class JsonManipulator
     public function __construct($contents)
     {
         if (!self::$RECURSE_BLOCKS) {
-            self::$RECURSE_BLOCKS = '(?:[^{}]*|\{(?:[^{}]*|\{(?:[^{}]*|\{(?:[^{}]*|\{[^{}]*\})*\})*\})*\})*';
-            self::$RECURSE_ARRAYS = '(?:[^\]]*|\[(?:[^\]]*|\[(?:[^\]]*|\[(?:[^\]]*|\[[^\]]*\])*\])*\])*\]|'.self::$RECURSE_BLOCKS.')*';
-            self::$JSON_STRING = '"(?:[^\0-\x09\x0a-\x1f\\\\"]+|\\\\["bfnrt/\\\\]|\\\\u[a-fA-F0-9]{4})*"';
+            self::$RECURSE_BLOCKS = '(?:[^{}]*+|\{(?:[^{}]*+|\{(?:[^{}]*+|\{(?:[^{}]*+|\{[^{}]*+\})*\})*\})*\})*';
+            self::$RECURSE_ARRAYS = '(?:[^\]]*+|\[(?:[^\]]*+|\[(?:[^\]]*+|\[(?:[^\]]*+|\[[^\]]*+\])*\])*\])*\]|'.self::$RECURSE_BLOCKS.')*';
+            self::$JSON_STRING = '"(?:[^\0-\x09\x0a-\x1f\\\\"]+|\\\\["bfnrt/\\\\]|\\\\u[a-fA-F0-9]{4})*+"';
             self::$JSON_VALUE = '(?:[0-9.]+|null|true|false|'.self::$JSON_STRING.'|\['.self::$RECURSE_ARRAYS.'\]|\{'.self::$RECURSE_BLOCKS.'\})';
         }
 
@@ -422,6 +422,12 @@ class JsonManipulator
                     throw new \RuntimeException('Failed to execute regex: PREG_BAD_UTF8_ERROR', PREG_BAD_UTF8_ERROR);
                 case PREG_BAD_UTF8_OFFSET_ERROR:
                     throw new \RuntimeException('Failed to execute regex: PREG_BAD_UTF8_OFFSET_ERROR', PREG_BAD_UTF8_OFFSET_ERROR);
+                case 6: // PREG_JIT_STACKLIMIT_ERROR
+                    if (PHP_VERSION_ID > 70000) {
+                        throw new \RuntimeException('Failed to execute regex: PREG_JIT_STACKLIMIT_ERROR', 6);
+                    }
+                    // fallthrough
+
                 default:
                     throw new \RuntimeException('Failed to execute regex: Unknown error');
             }

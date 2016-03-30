@@ -260,20 +260,9 @@ class RemoteFilesystem
             $this->io->writeError("    Downloading: <comment>Connecting...</comment>", false);
         }
 
-        // Check for secure HTTP
-        if (
-            ($this->scheme === 'http' || substr($fileUrl, 0, 5) === 'http:')
-            && $this->config && $this->config->get('secure-http')
-        ) {
-            // Passthru unsecure Packagist calls to $hashed providers as file integrity is verified with sha256
-            if (substr($fileUrl, 0, 23) !== 'http://packagist.org/p/' || (false === strpos($fileUrl, '$') && false === strpos($fileUrl, '%24'))) {
-                // other URLs must fail hard
-                throw new TransportException(sprintf(
-                    'Your configuration does not allow connection to %s://%s. See https://getcomposer.org/doc/06-config.md#secure-http for details.',
-                    $this->scheme,
-                    $originUrl
-                ));
-            }
+        // Check for secure HTTP, but allow insecure Packagist calls to $hashed providers as file integrity is verified with sha256
+        if ((substr($fileUrl, 0, 23) !== 'http://packagist.org/p/' || (false === strpos($fileUrl, '$') && false === strpos($fileUrl, '%24'))) && $this->config) {
+            $this->config->prohibitUrlByConfig($fileUrl);
         }
 
         $errorMessage = '';
@@ -342,6 +331,10 @@ class RemoteFilesystem
         // fail 4xx and 5xx responses and capture the response
         if ($statusCode && $statusCode >= 400 && $statusCode <= 599) {
             if (!$this->retry) {
+                if ($this->progress && !$this->retry && !$isRedirect) {
+                    $this->io->overwriteError("    Downloading: <error>Failed</error>");
+                }
+
                 $e = new TransportException('The "'.$this->fileUrl.'" file could not be downloaded ('.$http_response_header[0].')', $statusCode);
                 $e->setHeaders($http_response_header);
                 $e->setResponse($result);
@@ -352,7 +345,7 @@ class RemoteFilesystem
         }
 
         if ($this->progress && !$this->retry && !$isRedirect) {
-            $this->io->overwriteError("    Downloading: <comment>100%</comment>");
+            $this->io->overwriteError("    Downloading: ".($result === false ? '<error>Failed</error>' : '<comment>100%</comment>'));
         }
 
         // decode gzip
@@ -881,12 +874,23 @@ class RemoteFilesystem
         // This mimics how OpenSSL uses the SSL_CERT_FILE env variable.
         $envCertFile = getenv('SSL_CERT_FILE');
         if ($envCertFile && is_readable($envCertFile) && $this->validateCaFile($envCertFile)) {
-            // Possibly throw exception instead of ignoring SSL_CERT_FILE if it's invalid?
             return $caPath = $envCertFile;
+        }
+
+        // If SSL_CERT_DIR env variable points to a valid certificate/bundle, use that.
+        // This mimics how OpenSSL uses the SSL_CERT_FILE env variable.
+        $envCertDir = getenv('SSL_CERT_DIR');
+        if ($envCertDir && is_dir($envCertDir) && is_readable($envCertDir)) {
+            return $caPath = $envCertDir;
         }
 
         $configured = ini_get('openssl.cafile');
         if ($configured && strlen($configured) > 0 && is_readable($configured) && $this->validateCaFile($configured)) {
+            return $caPath = $configured;
+        }
+
+        $configured = ini_get('openssl.capath');
+        if ($configured && is_dir($configured) && is_readable($configured)) {
             return $caPath = $configured;
         }
 
